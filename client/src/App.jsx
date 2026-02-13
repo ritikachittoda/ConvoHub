@@ -1,9 +1,14 @@
-function App() {
+import axios from "axios"
+import { UserContextProvider } from "./UserContext";
+import Routes from "./Routes";
 
+function App() {
+  axios.defaults.baseURL = "http://localhost:4000";
+  axios.defaults.withCredentials = true;
   return (
-    <div>
-      <h1 className="bg-red-500 text-white p-4">ConvoHub</h1>
-    </div>
+    <UserContextProvider>
+      <Routes />
+    </UserContextProvider>
   )
 }
 
