@@ -88,7 +88,6 @@ const server = app.listen(4000, () => {
 
 const wss = new WebSocketServer({ server });
 wss.on('connection', (connection, req) => {
-    console.log("WS connection attempt");
     const cookies = req.headers.cookie;
     if (cookies) {
         const tokenCookieString = cookies
@@ -106,4 +105,10 @@ wss.on('connection', (connection, req) => {
             }
         }
     }
+
+    [...wss.clients].forEach(client => {
+        client.send(JSON.stringify({
+            online: [...wss.clients].map(c => ({userId:c.userId, username:c.username})),
+        }));
+    });
 });
