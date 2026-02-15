@@ -6,6 +6,7 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 import bcrypt from "bcryptjs";
 import User from './models/User.js';
+import { WebSocketServer} from "ws";
 
 dotenv.config();
 async function connectDB() {
@@ -53,7 +54,7 @@ app.post('/login', async (req, res) => {
         const passOk = bcrypt.compareSync(password, foundUser.password);
         if (passOk) {
             jwt.sign({ userId: foundUser._id, username }, jwtSecret, {}, (err, token) => {
-                res.cookie('token', token, {sameSite: 'none', secure: true}).json({
+                res.cookie('token', token, {sameSite: 'lax', secure: false}).json({
                     id: foundUser._id,
                 });
             });
@@ -71,7 +72,7 @@ app.post('/register', async (req, res) => {
         });
         jwt.sign({ userId: createdUser._id, username }, jwtSecret, {}, (err, token) => {
             if (err) throw err;
-            res.cookie('token', token, {sameSite: 'none', secure: true}).status(201).json({
+            res.cookie('token', token, {sameSite: 'lax', secure: false}).status(201).json({
                 id: createdUser._id,
             });
         });
@@ -81,7 +82,28 @@ app.post('/register', async (req, res) => {
     }
 });
 
-app.listen(4000, () => {
+const server = app.listen(4000, () => {
     console.log("Server started on port 4000");
 });
 
+const wss = new WebSocketServer({ server });
+wss.on('connection', (connection, req) => {
+    console.log("WS connection attempt");
+    const cookies = req.headers.cookie;
+    if (cookies) {
+        const tokenCookieString = cookies
+            .split(';')
+            .find(str => str.trim().startsWith('token='));
+        if (tokenCookieString) {
+            const token = tokenCookieString.split('=')[1];
+            if (token) {
+                jwt.verify(token, jwtSecret, {}, (err, userData) => {
+                    if (err) throw err;
+                    const { userId, username } = userData;
+                    connection.userId = userId;
+                    connection.username = username;
+                });
+            }
+        }
+    }
+});
