@@ -7,7 +7,7 @@ import cookieParser from "cookie-parser";
 import bcrypt from "bcryptjs";
 import User from './models/User.js';
 import Message from './models/Message.js';
-import { WebSocketServer} from "ws";
+import { WebSocketServer } from "ws";
 
 dotenv.config();
 async function connectDB() {
@@ -32,8 +32,33 @@ app.use(cors({
     origin: process.env.CLIENT_URL,
 }));
 
+async function getUserDataFromRequest(req) {
+    return new Promise((resolve, reject) => {
+        const token = req.cookies?.token;
+        if (token) {
+            jwt.verify(token, jwtSecret, {}, (err, userData) => {
+                if (err) throw err;
+                resolve(userData);
+            });
+        } else {
+            reject('no token');
+        }
+    });
+}
+
 app.get('/test', (req, res) => {
     res.json('test ok');
+});
+
+app.get('/messages/:userId', async (req, res) => {
+    const { userId } = req.params;
+    const userData = await getUserDataFromRequest(req);
+    const ourUserId = userData.userId;
+    const messages = await Message.find({
+        sender: { $in: [userId, ourUserId] },
+        recipient: { $in: [userId, ourUserId] },
+    }).sort({ createdAt: -1});
+    res.json(messages);
 });
 
 app.get('/profile', (req, res) => {
@@ -55,7 +80,7 @@ app.post('/login', async (req, res) => {
         const passOk = bcrypt.compareSync(password, foundUser.password);
         if (passOk) {
             jwt.sign({ userId: foundUser._id, username }, jwtSecret, {}, (err, token) => {
-                res.cookie('token', token, {sameSite: 'lax', secure: false}).json({
+                res.cookie('token', token, { sameSite: 'lax', secure: false }).json({
                     id: foundUser._id,
                 });
             });
@@ -67,13 +92,13 @@ app.post('/register', async (req, res) => {
     const { username, password } = req.body;
     try {
         const hashedPassword = bcrypt.hashSync(password, bcryptSalt);
-        const createdUser = await User.create({ 
-            username, 
+        const createdUser = await User.create({
+            username,
             password: hashedPassword,
         });
         jwt.sign({ userId: createdUser._id, username }, jwtSecret, {}, (err, token) => {
             if (err) throw err;
-            res.cookie('token', token, {sameSite: 'lax', secure: false}).status(201).json({
+            res.cookie('token', token, { sameSite: 'lax', secure: false }).status(201).json({
                 id: createdUser._id,
             });
         });
@@ -111,7 +136,7 @@ wss.on('connection', (connection, req) => {
 
     connection.on('message', async (message) => {
         const messageData = JSON.parse(message.toString());
-        const {recipient, text} = messageData;
+        const { recipient, text } = messageData;
         if (recipient && text) {
             const messageDoc = await Message.create({
                 sender: connection.userId,
@@ -121,7 +146,7 @@ wss.on('connection', (connection, req) => {
             [...wss.clients]
                 .filter(c => c.userId === recipient)
                 .forEach(c => c.send(JSON.stringify({
-                    text, 
+                    text,
                     sender: connection.userId,
                     recipient,
                     id: messageDoc._id,
@@ -132,7 +157,7 @@ wss.on('connection', (connection, req) => {
     // notify everyone about online people (when someone connects)
     [...wss.clients].forEach(client => {
         client.send(JSON.stringify({
-            online: [...wss.clients].map(c => ({userId:c.userId, username:c.username})),
+            online: [...wss.clients].map(c => ({ userId: c.userId, username: c.username })),
         }));
     });
 });
