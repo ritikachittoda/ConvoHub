@@ -8,6 +8,12 @@ import bcrypt from "bcryptjs";
 import User from './models/User.js';
 import Message from './models/Message.js';
 import { WebSocketServer } from "ws";
+import fs from "fs";
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 dotenv.config();
 async function connectDB() {
@@ -25,6 +31,7 @@ const jwtSecret = process.env.JWT_SECRET;
 const bcryptSalt = bcrypt.genSaltSync(10);
 
 const app = express();
+app.use('/uploads', express.static(__dirname + '/uploads'));
 app.use(express.json());
 app.use(cookieParser());
 app.use(cors({
@@ -169,12 +176,24 @@ wss.on('connection', (connection, req) => {
 
     connection.on('message', async (message) => {
         const messageData = JSON.parse(message.toString());
-        const { recipient, text } = messageData;
-        if (recipient && text) {
+        const { recipient, text, file } = messageData;
+        let filename = null;
+        if (file) {
+            const parts = file.name.split('.');
+            const ext = parts[parts.length - 1];
+            filename = Date.now() + '.' + ext;
+            const path = __dirname + '/uploads/' + filename;
+            const bufferData = new Buffer(file.data.split(',')[1], 'base64');
+            fs.writeFile(path, bufferData, () => {
+                console.log('File saved:', path);
+            });
+        }
+        if (recipient && (text || file)) {
             const messageDoc = await Message.create({
                 sender: connection.userId,
                 recipient,
                 text,
+                file:file ? filename : null,
             });
             [...wss.clients]
                 .filter(c => c.userId === recipient)
@@ -182,6 +201,7 @@ wss.on('connection', (connection, req) => {
                     text,
                     sender: connection.userId,
                     recipient,
+                    file: file ? filename : null,
                     _id: messageDoc._id,
                 })));
         }
